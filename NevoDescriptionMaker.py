@@ -2,6 +2,11 @@
 
 import subprocess
 import sys
+import tkinter as tk
+from tkinter import messagebox, scrolledtext
+import requests
+import re
+import os
 
 # List of required packages
 required_packages = ['requests', 'tk']
@@ -16,16 +21,6 @@ for package in required_packages:
         __import__(package)
     except ImportError:
         install(package)
-
-# Importing the packages after ensuring they are installed
-import tkinter as tk
-from tkinter import messagebox, scrolledtext
-import requests
-import re
-import os
-
-# Your existing code goes here
-
 
 # Replace with your osu! client ID and client secret
 CREDENTIALS_FILE = 'credentials.txt'
@@ -42,42 +37,39 @@ def load_credentials():
             return client_id, client_secret
     return None, None
 
-def ask_credentials():
-    popup = tk.Toplevel(root)
-    popup.title("Enter Credentials")
-    
-    tk.Label(popup, text="Client ID:").grid(row=0, column=0, padx=10, pady=10)
-    client_id_entry = tk.Entry(popup, width=50)
-    client_id_entry.grid(row=0, column=1, padx=10, pady=10)
-    
-    tk.Label(popup, text="Client Secret:").grid(row=1, column=0, padx=10, pady=10)
-    client_secret_entry = tk.Entry(popup, width=50, show="*")
-    client_secret_entry.grid(row=1, column=1, padx=10, pady=10)
-    
-    def on_submit():
-        global client_id, client_secret
-        client_id = client_id_entry.get()
-        client_secret = client_secret_entry.get()
-        if client_id and client_secret:
-            save_credentials(client_id, client_secret)
-            popup.destroy()
-        else:
-            messagebox.showwarning("Input Error", "Please enter both Client ID and Client Secret.")
+def get_credentials():
+    if os.path.exists(CREDENTIALS_FILE):
+        with open(CREDENTIALS_FILE, 'r') as file:
+            client_id = file.readline().strip()
+            client_secret = file.readline().strip()
+            return client_id, client_secret
+    else:
+        return None, None
 
-    submit_button = tk.Button(popup, text="Submit", command=on_submit)
-    submit_button.grid(row=2, columnspan=2, pady=10)
+def prompt_for_credentials():
+    client_id = client_id_entry.get()
+    client_secret = client_secret_entry.get()
+    if client_id and client_secret:
+        save_credentials(client_id, client_secret)
+        client_id_label.pack_forget()
+        client_id_entry.pack_forget()
+        client_secret_label.pack_forget()
+        client_secret_entry.pack_forget()
+        submit_credentials_button.pack_forget()
+        url_label.pack(pady=5)
+        url_entry.pack(pady=5)
+        hitsounder_label.pack(pady=5)
+        hitsounder_entry.pack(pady=5)
+        submit_button.pack(pady=10)
+        result_display.pack(pady=10)
+        copy_button.pack(pady=5)
+    else:
+        messagebox.showwarning("Input Error", "Please enter both Client ID and Client Secret.")
 
-    popup.grab_set()
-    popup.wait_window()
-
-def initial_setup():
-    global client_id, client_secret
-    client_id, client_secret = load_credentials()
+def get_access_token():
+    client_id, client_secret = get_credentials()
     if not client_id or not client_secret:
-        ask_credentials()
-    return client_id, client_secret
-
-def get_access_token(client_id, client_secret):
+        raise ValueError("Client ID and/or Client Secret not found.")
     token_url = 'https://osu.ppy.sh/oauth/token'
     token_data = {
         'client_id': client_id,
@@ -161,7 +153,7 @@ def generate_bbcode():
         beatmap_url = url_entry.get()
         hitsounder = hitsounder_entry.get()
         beatmapset_id = extract_beatmapset_id(beatmap_url)
-        token = get_access_token(client_id, client_secret)
+        token = get_access_token()
         beatmap_data = get_beatmap_data(beatmapset_id, token)
         
         hitsounder_id = get_user_id_from_username(hitsounder, token)
@@ -193,6 +185,8 @@ def generate_bbcode():
         
         update_display(final_text)
         
+    except requests.exceptions.HTTPError as e:
+        messagebox.showerror("HTTP Error", f"HTTP Error: {e.response.status_code} {e.response.reason}")
     except Exception as e:
         messagebox.showerror("Error", str(e))
 
@@ -207,18 +201,69 @@ def copy_to_clipboard():
     root.clipboard_append(result_display.get(1.0, tk.END).strip())
     messagebox.showinfo("Copied", "BBCode copied to clipboard!")
 
-def edit_credentials():
-    ask_credentials()
-    global client_id, client_secret
-    client_id, client_secret = load_credentials()
-
 # Create the main window
 root = tk.Tk()
 root.title("Beatmap BBCode Generator")
 
-# Initialize client ID and client secret
-client_id, client_secret = initial_setup()
+# Check for existing credentials
+client_id, client_secret = load_credentials()
 
+if not client_id or not client_secret:
+    # Add credential input widgets
+    client_id_label = tk.Label(root, text="Enter Client ID:")
+    client_id_label.pack(pady=5)
+    client_id_entry = tk.Entry(root, width=80)
+    client_id_entry.pack(pady=5)
+    
+    client_secret_label = tk.Label(root, text="Enter Client Secret:")
+    client_secret_label.pack(pady=5)
+    client_secret_entry = tk.Entry(root, width=80, show="*")
+    client_secret_entry.pack(pady=5)
+    
+    submit_credentials_button = tk.Button(root, text="Submit Credentials", command=prompt_for_credentials)
+    submit_credentials_button.pack(pady=10)
+else:
+    client_id_entry = client_secret_entry = None
+
+# URL input
+url_label = tk.Label(root, text="Enter beatmap URL:")
+url_entry = tk.Entry(root, width=80)
+
+# Hitsounder input
+hitsounder_label = tk.Label(root, text="Enter hitsounder username or ID:")
+hitsounder_entry = tk.Entry(root, width=80)
+
+# Submit button
+submit_button = tk.Button(root, text="Generate BBCode", command=generate_bbcode)
+
+
+# Result display area
+result_display = scrolledtext.ScrolledText(root, width=80, height=20)
+result_display.config(state=tk.DISABLED)
+
+# Copy to Clipboard button
+copy_button = tk.Button(root, text="Copy to Clipboard", command=copy_to_clipboard)
+
+# Display relevant widgets based on credential availability
+if client_id_entry and client_secret_entry:
+    url_label.pack_forget()
+    url_entry.pack_forget()
+    hitsounder_label.pack_forget()
+    hitsounder_entry.pack_forget()
+    submit_button.pack_forget()
+    result_display.pack_forget()
+    copy_button.pack_forget()
+else:
+    url_label.pack(pady=5)
+    url_entry.pack(pady=5)
+    hitsounder_label.pack(pady=5)
+    hitsounder_entry.pack(pady=5)
+    submit_button.pack(pady=10)
+    result_display.pack(pady=10)
+    copy_button.pack(pady=5)
+
+
+# Difficulty info dictionary
 difficulty_info = {
     'Easy': {'url': 'https://i.ppy.sh/e4046437c0d195a3f2bed4b4140a41d696bdf7f0/68747470733a2f2f6f73752e7070792e73682f77696b692f696d616765732f7368617265642f646966662f656173792d6f2e706e673f3230323131323135', 'color': '#8cccec'},
     'Normal': {'url': 'https://i.ppy.sh/20d7052354c61f8faf3a4828d9ff7751bb6776b1/68747470733a2f2f6f73752e7070792e73682f77696b692f696d616765732f7368617265642f646966662f6e6f726d616c2d6f2e706e673f3230323131323135', 'color': '#68fc94'},
@@ -227,33 +272,6 @@ difficulty_info = {
     'Expert': {'url': 'https://i.ppy.sh/3b561ef8a73118940b59e79f3433bfa98c26cbf1/68747470733a2f2f6f73752e7070792e73682f77696b692f696d616765732f7368617265642f646966662f657870657274706c75732d6f2e706e673f3230323131323135', 'color': '#8000FF'},
     'Expert+': {'url': 'https://i.ppy.sh/3b561ef8a73118940b59e79f3433bfa98c26cbf1/68747470733a2f2f6f73752e7070792e73682f77696b692f696d616765732f7368617265642f646966662f657870657274706c75732d6f2e706e673f3230323131323135', 'color': '#8000FF'}
 }
-
-# URL input
-tk.Label(root, text="Enter beatmap URL:").pack(pady=5)
-url_entry = tk.Entry(root, width=80)
-url_entry.pack(pady=5)
-
-# Hitsounder input
-tk.Label(root, text="Enter hitsounder username or ID:").pack(pady=5)
-hitsounder_entry = tk.Entry(root, width=80)
-hitsounder_entry.pack(pady=5)
-
-# Edit Credentials button
-edit_button = tk.Button(root, text="Edit Credentials", command=edit_credentials)
-edit_button.pack(pady=10)
-
-# Submit button
-submit_button = tk.Button(root, text="Generate BBCode", command=generate_bbcode)
-submit_button.pack(pady=10)
-
-# Result display area
-result_display = scrolledtext.ScrolledText(root, width=80, height=20)
-result_display.pack(pady=10)
-result_display.config(state=tk.DISABLED)
-
-# Copy to Clipboard button (moved under the text box)
-copy_button = tk.Button(root, text="Copy to Clipboard", command=copy_to_clipboard)
-copy_button.pack(pady=5)
 
 # Run the application
 root.mainloop()
