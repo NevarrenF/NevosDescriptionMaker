@@ -169,14 +169,14 @@ def generate_bbcode():
                 results.append(f"Difficulty '{difficulty_name}' is not recognized.")
                 continue
             
-            username, _ = get_creator_info(user_id, token)
-            results.append((star_rating, difficulty_name, core_difficulty_name, username))
+            username, user_id = get_creator_info(user_id, token)
+            results.append((star_rating, difficulty_name, core_difficulty_name, username, user_id))
         
         results.sort(key=lambda x: x[0])
         
         bbcode_results = [
             format_as_bbcode(difficulty_name, core_difficulty_name, username, user_id)
-            for _, difficulty_name, core_difficulty_name, username in results
+            for _, difficulty_name, core_difficulty_name, username, user_id in results
         ]
         
         bbcode_results.append(f"\nHitsounds by [url=https://osu.ppy.sh/u/{hitsounder_id}]{hitsounder}[/url]")
